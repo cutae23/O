@@ -531,6 +531,28 @@
       sortBy: "distance"
     };
 
+    // --- Retrieve API Key safely from either LocalStorage or build-time environment variable (e.g. Vercel) ---
+    function getClientApiKey() {
+      const savedKey = localStorage.getItem("gemini_api_key");
+      if (savedKey && savedKey.trim() !== "") {
+        return savedKey.trim();
+      }
+      
+      // Try to read build-time injected environment variables
+      try {
+        if (typeof process !== "undefined" && process.env) {
+          if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== "") {
+            return process.env.GEMINI_API_KEY.trim();
+          }
+          if (process.env.VITE_GEMINI_API_KEY && process.env.VITE_GEMINI_API_KEY.trim() !== "") {
+            return process.env.VITE_GEMINI_API_KEY.trim();
+          }
+        }
+      } catch (e) {}
+
+      return "";
+    }
+
     // --- Local Storage Storage Helpers ---
     function getAccumulatedRestaurants() {
       try {
@@ -969,10 +991,10 @@ The result must be a JSON array. Each object in the array must strictly match th
       const geminiErrorBanner = document.getElementById("gemini-error-banner");
       if (geminiErrorBanner) geminiErrorBanner.style.display = "none";
       
-      // Auto attach local storage Gemini API Key if present and not in payload
-      const savedKey = localStorage.getItem("gemini_api_key");
-      if (savedKey && !payload.geminiApiKey) {
-        payload.geminiApiKey = savedKey;
+      // Auto attach Gemini API Key if present and not in payload
+      const resolvedKey = getClientApiKey();
+      if (resolvedKey && !payload.geminiApiKey) {
+        payload.geminiApiKey = resolvedKey;
       }
 
       // Attach style preference
@@ -1809,7 +1831,7 @@ The result must be a JSON array. Each object in the array must strictly match th
         const r = allFetchedRestaurants.find(item => item.id === id);
         if (!r) throw new Error("해당 식당 데이터를 읽을 수 없습니다.");
 
-        const apiKey = localStorage.getItem("gemini_api_key");
+        const apiKey = getClientApiKey();
         let updatedItem = null;
 
         // Try server endpoint
@@ -2069,20 +2091,25 @@ Return ONLY valid JSON format matching this schema. Avoid any extra text context
 
     function updateGeminiUIState() {
       const savedKey = localStorage.getItem("gemini_api_key");
+      const resolvedKey = getClientApiKey();
       const indicator = document.getElementById("gemini-status-indicator");
       const modalStatus = document.getElementById("gemini-status");
       const activeBadge = document.getElementById("gemini-active-badge");
 
-      if (savedKey) {
+      if (resolvedKey) {
         if (indicator) {
           indicator.className = "absolute -top-1 -right-1 w-3 h-3 bg-violet-500 rounded-full border-2 border-white animate-pulse";
         }
         if (modalStatus) {
-          modalStatus.textContent = "활성화됨";
+          modalStatus.textContent = savedKey ? "활성화됨" : "활성화됨 (환경변수)";
           modalStatus.className = "text-[9px] text-emerald-600 font-extrabold font-mono";
         }
         if (activeBadge) {
           activeBadge.style.display = "flex";
+          const textSpan = activeBadge.querySelector("span");
+          if (textSpan) {
+            textSpan.textContent = "AI 맛집 추천 작동 중" + (savedKey ? "" : " (환경변수)");
+          }
         }
       } else {
         if (indicator) {
@@ -2099,8 +2126,16 @@ Return ONLY valid JSON format matching this schema. Avoid any extra text context
     }
 
     function openConfigModal() {
-      const currentKey = localStorage.getItem("gemini_api_key") || "";
-      apiKeyInput.value = currentKey;
+      const savedKey = localStorage.getItem("gemini_api_key") || "";
+      const resolvedKey = getClientApiKey();
+      
+      if (!savedKey && resolvedKey) {
+        apiKeyInput.placeholder = "환경변수 설정값 사용 중 (수정하려면 입력하세요)";
+      } else {
+        apiKeyInput.placeholder = "AI API Key를 입력하세요 (AI Studio 발급)";
+      }
+      
+      apiKeyInput.value = savedKey;
       configModal.style.display = "flex";
       updateGeminiUIState();
     }
