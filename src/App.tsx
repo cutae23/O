@@ -44,6 +44,18 @@ export default function App() {
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [locationName, setLocationName] = useState<string>("서울 마포구 망원동");
 
+  // Gemini AI Status States
+  const [hasServerApiKey, setHasServerApiKey] = useState<boolean>(false);
+  const [serverKeyPrefix, setServerKeyPrefix] = useState<string | null>(null);
+  const [isGeminiActive, setIsGeminiActive] = useState<boolean>(false);
+  const [geminiError, setGeminiError] = useState<string | null>(null);
+  const [customApiKey, setCustomApiKey] = useState<string>(() => {
+    return localStorage.getItem("user_gemini_api_key") || "";
+  });
+  const [favoriteStyle, setFavoriteStyle] = useState<string>(() => {
+    return localStorage.getItem("user_favorite_style") || "";
+  });
+
   // Location Positioning States for sorting and center references
   const [centerLat, setCenterLat] = useState<number>(37.5562); // Default 망원동 Area
   const [centerLng, setCenterLng] = useState<number>(126.9015);
@@ -103,10 +115,11 @@ export default function App() {
   }, []);
 
   // --- Core API fetch call ---
-  const fetchTVRestaurants = async (params: { query?: string; latitude?: number; longitude?: number }) => {
+  const fetchTVRestaurants = async (params: { query?: string; latitude?: number; longitude?: number; force?: boolean }) => {
     setLoading(true);
     setError(null);
     setSelectedRestaurant(null);
+    setGeminiError(null);
     
     const displayQuery = params.query 
       ? `'${params.query}' 주변` 
@@ -118,7 +131,11 @@ export default function App() {
       const response = await fetch("/api/restaurants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(params),
+        body: JSON.stringify({
+          ...params,
+          geminiApiKey: customApiKey.trim() || undefined,
+          favoriteStyle: favoriteStyle.trim() || undefined
+        }),
       });
 
       if (!response.ok) {
@@ -131,6 +148,8 @@ export default function App() {
       const list = data.restaurants || [];
       setRestaurants(list);
       setLocationName(data.locationName || params.query || "검색 위치 주변");
+      setIsGeminiActive(!!data.isGeminiActive);
+      setGeminiError(data.geminiError || null);
 
       // Handle Map centering
       if (list.length > 0) {
@@ -216,7 +235,21 @@ export default function App() {
   };
 
   // --- Initial loading on Mount ---
+  const fetchKeyStatus = async () => {
+    try {
+      const res = await fetch("/api/health");
+      if (res.ok) {
+        const data = await res.json();
+        setHasServerApiKey(!!data.hasServerApiKey);
+        setServerKeyPrefix(data.keyPrefix || null);
+      }
+    } catch (err) {
+      console.error("Failed to fetch API key status:", err);
+    }
+  };
+
   useEffect(() => {
+    fetchKeyStatus();
     // Show 망원동 first as premium default recommendation
     fetchTVRestaurants({ query: "서울 망원동" });
   }, []);
@@ -545,6 +578,153 @@ export default function App() {
                       </button>
                     </div>
                   </div>
+
+                  {/* Row D: Gemini AI Live Verification Settings & Status */}
+                  <div className="pt-3 border-t border-slate-200 mt-2 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-extrabold text-rose-500 uppercase font-mono tracking-wider flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Gemini AI 실시간 탐색 및 연동 상태
+                      </label>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        isGeminiActive 
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200" 
+                          : "bg-slate-100 text-slate-500 border border-slate-200"
+                      }`}>
+                        {isGeminiActive ? "🟢 AI 실시간 작동중" : "⚪ 로컬 DB 대기중"}
+                      </span>
+                    </div>
+
+                    {/* API Key Health Feedback */}
+                    <div className="bg-white rounded-lg p-2.5 border border-slate-100 text-[11px] space-y-1.5 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400 font-semibold">서버 API Key 연동:</span>
+                        {hasServerApiKey ? (
+                          <span className="text-emerald-600 font-bold flex items-center gap-1">
+                            🟢 연결됨 ({serverKeyPrefix})
+                          </span>
+                        ) : (
+                          <span className="text-amber-600 font-bold flex items-center gap-1">
+                            🟡 미등록 (기본 로컬 데이터만 활성)
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Helpful Guide if server key is missing */}
+                      {!hasServerApiKey && !customApiKey && (
+                        <div className="text-[10px] text-slate-500 leading-relaxed bg-amber-50/50 p-2.5 rounded-lg border border-amber-200/60 mt-1 space-y-1">
+                          <p className="font-semibold text-amber-800">💡 API Key 설정 및 반영 방법:</p>
+                          <p>1. 우측 상단 <strong>Settings &gt; Secrets</strong> 메뉴에서 <code>GEMINI_API_KEY</code>를 등록해 주세요.</p>
+                          <p className="text-rose-600 font-semibold">2. ⚠️ 중요: 등록 후 반드시 우측 하단에서 개발 서버를 재시작해주셔야 새로운 환경변수가 로드됩니다!</p>
+                          <p>3. 또는 바로 아래 <strong>"개인 Gemini API Key 등록"</strong> 칸에 키를 직접 입력하시면 서버 재시작 없이 즉시 사용하실 수 있습니다.</p>
+                        </div>
+                      )}
+
+                      {/* Last Gemini Action Result or Error Log */}
+                      {geminiError && (
+                        <div className="mt-2 p-3 rounded-lg bg-rose-50 border border-rose-200 text-[11px] text-rose-800 leading-relaxed space-y-1">
+                          <p className="font-extrabold flex items-center gap-1.5 text-rose-700">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500 animate-bounce" />
+                            <span>Gemini AI 탐색 제한 안내</span>
+                          </p>
+                          <div className="text-[10.5px] font-medium leading-relaxed">
+                            {geminiError === "QUOTA_LIMIT" ? (
+                              <p>
+                                <strong>⚠️ 하루 호출 한도 초과:</strong> 무료 체험용 일일 호출 쿼터(20회)가 초과되었습니다. 
+                                잠시 후 다시 시도하시거나, 아래에 <strong>개인 Gemini API Key</strong>를 직접 입력하시면 즉시 한도 복구되어 계속 탐색하실 수 있습니다!
+                              </p>
+                            ) : geminiError === "HIGH_DEMAND" ? (
+                              <p>
+                                <strong>⚠️ 모델 트래픽 폭주 (503):</strong> 현재 Gemini 무료 서버 모델 이용자가 많아 일시적으로 요청이 거절되었습니다. 
+                                약 10~20초 후 상단의 <strong>다시 탐색하기</strong> 버튼을 누르시면 대부분 정상 복구됩니다.
+                              </p>
+                            ) : geminiError === "INVALID_API_KEY" ? (
+                              <p>
+                                <strong>⚠️ 유효하지 않은 API Key:</strong> 등록된 Gemini API Key가 유효하지 않거나 잘못 복사되었습니다. 
+                                입력하신 API Key에 공백이나 특수기호가 섞여있지 않은지 다시 한번 검토해 주세요.
+                              </p>
+                            ) : (
+                              <div>
+                                <p><strong>⚠️ API 호출 실패 상세:</strong></p>
+                                <p className="mt-1 font-mono break-all bg-white/70 p-1.5 rounded border border-rose-200/60 text-[10px] text-rose-900 select-all">
+                                  {geminiError}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Interactive override settings */}
+                    <div className="space-y-2">
+                      {/* Personal Key Override Input */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[10px] font-bold text-slate-500">개인 Gemini API Key 등록 (선택/클라이언트용)</label>
+                          {customApiKey && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCustomApiKey("");
+                                localStorage.removeItem("user_gemini_api_key");
+                              }}
+                              className="text-[10px] text-rose-500 font-bold hover:underline"
+                            >
+                              키 초기화
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="password"
+                          placeholder="AI Studio에서 발급한 개인 API Key(AIzaSy...)를 입력하여 덮어쓰기"
+                          value={customApiKey}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            setCustomApiKey(val);
+                            localStorage.setItem("user_gemini_api_key", val);
+                          }}
+                          className="w-full text-xs px-2.5 py-2 rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/10 focus:border-rose-500 font-mono transition-all"
+                        />
+                      </div>
+
+                      {/* Favorite Food Style Keyword */}
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 block mb-1">
+                          나의 맞춤형 음식 스타일/메뉴 (AI 라이브 필터 검색 반영)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="예: 매운 짬뽕, 성시경 먹방, 야포, 백반, 노포 분위기"
+                          value={favoriteStyle}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setFavoriteStyle(val);
+                            localStorage.setItem("user_favorite_style", val);
+                          }}
+                          className="w-full text-xs px-2.5 py-2 rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/10 focus:border-rose-500 transition-all"
+                        />
+                        <p className="text-[9px] text-slate-400 mt-0.5">※ 입력 후 상단 검색 버튼이나 엔터를 누르면 AI가 이 스타일을 반영하여 주변 맛집을 엄선합니다.</p>
+                      </div>
+
+                      {/* Force Recalculate/Search Trigger */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          fetchTVRestaurants({ 
+                            query: locationName === "서울 마포구 망원동" ? "서울 망원동" : locationName, 
+                            latitude: centerLat, 
+                            longitude: centerLng,
+                            force: true
+                          });
+                        }}
+                        className="w-full mt-1.5 py-2 bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 active:scale-[0.99] text-white text-xs font-bold rounded-lg shadow-sm hover:shadow transition-all flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                        <span>입력된 설정으로 AI 실시간 다시 탐색하기</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </motion.div>
             )}
@@ -626,6 +806,12 @@ export default function App() {
                     {/* Header: Badge & Show info */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
+                        {restaurant.isGemini && (
+                          <span className="text-[9px] font-extrabold tracking-wider uppercase px-2 py-0.5 rounded bg-gradient-to-r from-rose-500 to-amber-500 text-white shadow-2xs flex items-center gap-1 shrink-0 animate-pulse">
+                            <Sparkles className="w-2.5 h-2.5" />
+                            AI 실시간 발굴
+                          </span>
+                        )}
                         <span className={`text-[9px] font-bold px-2 py-0.5 rounded border uppercase transition-colors ${tagColor}`}>
                           {restaurant.tvShow}
                         </span>

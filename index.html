@@ -79,43 +79,6 @@
       backdrop-filter: blur(2px);
       -webkit-backdrop-filter: blur(2px);
     }
-
-    /* Cute Apologetic Bowing Character Animations */
-    @keyframes cuteBow {
-      0%, 100% {
-        transform: translateY(0) rotate(0deg);
-      }
-      35% {
-        transform: translateY(4px) rotate(8deg);
-      }
-      50% {
-        transform: translateY(10px) rotate(13deg); /* bow head deeply */
-      }
-      65% {
-        transform: translateY(10px) rotate(13deg);
-      }
-      85% {
-        transform: translateY(2px) rotate(3deg);
-      }
-    }
-    .animate-cuteBow {
-      animation: cuteBow 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-      transform-origin: bottom center;
-    }
-
-    @keyframes cuteShadow {
-      0%, 100% {
-        transform: scaleX(1);
-        opacity: 0.3;
-      }
-      50% {
-        transform: scaleX(0.75);
-        opacity: 0.55;
-      }
-    }
-    .animate-cuteShadow {
-      animation: cuteShadow 2.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-    }
   </style>
 </head>
 <body class="bg-[#fafafb] text-slate-800 antialiased font-sans overflow-hidden">
@@ -205,6 +168,16 @@
           title="내 현재 GPS 위치 주변 맛집 찾기"
         >
           <i data-lucide="compass" class="w-5 h-5"></i>
+        </button>
+
+        <button
+          id="gemini-api-config-btn"
+          type="button"
+          class="p-2.5 bg-violet-50 hover:bg-violet-100 active:bg-violet-200 text-violet-600 rounded-xl flex items-center justify-center shrink-0 border border-violet-100 transition-all cursor-pointer shadow-sm hover:shadow relative group"
+          title="Gemini AI 검색 부스터 설정"
+        >
+          <i data-lucide="sparkles" class="w-5 h-5 animate-pulse"></i>
+          <span id="gemini-status-indicator" class="absolute -top-1 -right-1 w-3 h-3 bg-slate-400 rounded-full border-2 border-white"></span>
         </button>
       </div>
     </header>
@@ -356,6 +329,43 @@
               <!-- Dynamically populated tags with inline deletion 'x' -->
             </div>
           </div>
+
+          <!-- AI Realtime Force Refresh Button -->
+          <button
+            id="ai-force-refresh-btn"
+            type="button"
+            class="w-full mb-3 py-2 px-3 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 active:scale-[0.99] text-white text-xs font-bold rounded-xl shadow-sm hover:shadow transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <i data-lucide="sparkles" class="w-3.5 h-3.5 animate-pulse text-yellow-300"></i>
+            <span>현재 위치에서 AI 실시간 맛집 새로고침</span>
+          </button>
+
+          <!-- Gemini API Error/Warning Banner -->
+          <div id="gemini-error-banner" style="display: none;" class="mb-3 p-3.5 rounded-xl bg-violet-50 border border-violet-200 text-violet-900 text-xs space-y-2">
+            <div class="flex items-center gap-1.5 font-bold text-violet-700">
+              <i data-lucide="alert-circle" class="w-4 h-4 text-violet-500 animate-bounce"></i>
+              <span>Gemini AI 맛집 탐색 지연/제한 안내</span>
+            </div>
+            <div id="gemini-error-text" class="text-[11px] leading-relaxed font-medium">
+              <!-- Dynamically changed message -->
+            </div>
+            <div class="flex gap-2 pt-1">
+              <button 
+                type="button" 
+                id="gemini-banner-config-btn"
+                class="text-[10px] bg-violet-600 hover:bg-violet-700 text-white font-bold px-2.5 py-1 rounded-md shadow-2xs transition-colors cursor-pointer"
+              >
+                개인 API Key 설정하기
+              </button>
+              <button 
+                type="button" 
+                id="gemini-banner-dismiss-btn"
+                class="text-[10px] bg-white hover:bg-slate-100 border border-violet-200 text-violet-700 font-bold px-2.5 py-1 rounded-md transition-colors cursor-pointer"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
           
           <!-- Query Error banner -->
           <div id="error-banner" style="display: none;" class="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs text-center space-y-1">
@@ -408,6 +418,102 @@
     </main>
   </div>
 
+  <!-- Gemini API Configuration Modal -->
+  <div 
+    id="gemini-config-modal" 
+    style="display: none;" 
+    class="fixed inset-0 bg-slate-900/70 backdrop-blur-xs z-50 flex items-center justify-center p-4 font-sans animate-fadeIn"
+  >
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden flex flex-col">
+      <!-- Modal header -->
+      <div class="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-violet-600 text-white flex items-center justify-center shadow-md shadow-violet-100">
+            <i data-lucide="sparkles" class="w-4 h-4 text-white"></i>
+          </div>
+          <div>
+            <h3 class="font-extrabold text-sm text-slate-900">Gemini AI 실시간 맛집 부스터</h3>
+            <p class="text-[10px] text-violet-500 font-bold">Google Gemini API Key Setup</p>
+          </div>
+        </div>
+        <button 
+          id="close-gemini-modal-btn" 
+          type="button" 
+          class="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-lg hover:bg-slate-100 cursor-pointer"
+        >
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Modal body -->
+      <div class="p-5 space-y-4 text-xs leading-relaxed text-slate-600">
+        <div class="space-y-1.5">
+          <div class="flex items-center justify-between">
+            <label class="font-extrabold text-violet-600 block uppercase font-mono tracking-wider text-[10px]">GEMINI API KEY</label>
+            <span id="gemini-status" class="text-[9px] text-slate-400 font-semibold font-mono">연결되지 않음</span>
+          </div>
+          <div class="relative">
+            <input 
+              id="gemini-api-key-input" 
+              type="password" 
+              placeholder="AI Studio에서 발급받은 AI 키 입력 (AI_...)"
+              class="w-full pl-3 pr-10 py-2 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500 text-xs font-mono rounded-lg"
+            />
+            <button 
+              id="toggle-key-visibility-btn" 
+              type="button" 
+              class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
+              <i data-lucide="eye" class="w-3.5 h-3.5" id="visibility-icon"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="p-3 bg-violet-50 rounded-xl border border-violet-100 text-[11px] font-medium space-y-1.5">
+          <p class="font-bold text-violet-800 flex items-center gap-1">
+            <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+            Gemini API 무료 발급 연동 가이드
+          </p>
+          <ol class="list-decimal pl-4 space-y-1 text-violet-700 font-medium">
+            <li>
+              <a href="https://aistudio.google.com/" target="_blank" class="text-violet-600 font-extrabold underline hover:text-violet-800">Google AI Studio (aistudio.google.com)</a> 이동
+            </li>
+            <li>
+              구글 계정 로그인 후 왼쪽 상단 <strong>"Create API Key"</strong> 클릭
+            </li>
+            <li>
+              새 프로젝트 또는 기존 프로젝트용 API 키를 생성하고 복사합니다.
+            </li>
+            <li>
+              복사한 키를 위 입력란에 붙여넣고 <strong>"저장 및 부스터 활성화"</strong>를 눌러주세요.
+            </li>
+          </ol>
+        </div>
+
+        <p class="text-[10px] text-slate-400 leading-relaxed font-medium">
+          ※ 입력하신 API 키 정보는 서버의 메모리 상에서만 1회성 중계에 사용되며, 안전하게 귀하의 브라우저 로컬 저장소(localStorage)에만 암호화 및 보관됩니다. 또한, 2km 이내의 진짜 식당 정보만을 엄선하여 보여줍니다.
+        </p>
+      </div>
+
+      <!-- Modal footer -->
+      <div class="p-3 border-t border-slate-100 bg-slate-50 flex gap-2 justify-end">
+        <button
+          id="reset-gemini-modal-btn"
+          type="button"
+          class="px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 border border-slate-200 rounded-lg bg-white cursor-pointer"
+        >
+          초기화
+        </button>
+        <button
+          id="save-gemini-modal-btn"
+          type="button"
+          class="px-4 py-1.5 text-xs font-extrabold text-white bg-violet-600 hover:bg-violet-700 rounded-lg shadow-sm transition-colors cursor-pointer"
+        >
+          저장 및 부스터 활성화
+        </button>
+      </div>
+    </div>
+  </div>
 
   <script type="module">
     import { TV_RESTAURANTS_DB } from "./src/restaurantsData.js";
@@ -736,20 +842,39 @@
     async function searchRestaurantsWithGeminiClientSide(lat, lng, locationName, apiKey, favoriteStyle) {
       if (!apiKey) return [];
 
+      const locLower = (locationName || "").toLowerCase();
+      const isBroadSearch = 
+        locLower.includes("부산") || 
+        locLower.includes("제주") || 
+        locLower.includes("대구") || 
+        locLower.includes("대전") || 
+        locLower.includes("광주") || 
+        locLower.includes("인천") || 
+        locLower.includes("울산") || 
+        locLower.includes("강원") || 
+        locLower.includes("경기") || 
+        locLower.includes("충청") || 
+        locLower.includes("전라") || 
+        locLower.includes("경상") ||
+        locLower.includes("서울") ||
+        locLower.length <= 5;
+
+      const maxRadius = isBroadSearch ? 15.0 : 3.5;
+
       const prompt = `You are an expert culinary guide specializing in South Korea's TV-featured and famous media-featured restaurants (e.g. 유명 방송 맛집 from shows/creators like 풍자 또간집, 백종원의 3대천왕, 전현무계획, 쯔양, 남겨서뭐하니, 성시경의 먹을텐데, 생활의 달인, 흑백요리사, 수요미식회, 식객 허영만의 백반기행, 맛있는 녀석들, 줄 서는 식당, 생생정보통, 놀라운 토요일, 최자로드, 유 퀴즈 온 더 블럭, 전지적 참견 시점, 백종원의 골목식당, 신상출시 편스토랑, 토요일은 밥이 좋아, 오늘 뭐 먹지?, 어쩌다 사장, 한국인의 밥상, 한끼줍쇼, 밥블레스유, 테이스티 로드, 홍석천 이원일, VJ특공대, 김사원세끼, 김영철의 동네 한 바퀴, 식신로드, 나 혼자 산다).
 
 Find real, officially featured restaurants in Korea that correspond to the following search profile:
 - Search Center point: ${locationName}
 - Coordinates: Latitude ${lat}, Longitude ${lng}
-- Distance constraint: Strictly within a 2.0 km radius of this center coordinate.
+- Distance constraint: Strictly within a ${maxRadius} km radius of this center coordinate.
 
 Strict Rules of Integrity:
 1. Search thoroughly across ALL SEASONS and year ranges of the TV shows listed above (e.g. '전현무계획 시즌1', '전현무계획 시즌2', '줄 서는 식당 2', '식신로드 시즌1/시즌2/시즌3/시즌4', '테이스티 로드 전 시즌', '어쩌다 사장 1/2/3', '밥블레스유 2020', '맛있는 녀석들' different eras, etc.).
 2. Return ONLY real, verifiable restaurants that actually exist and have been featured on Korean culinary TV programs or Creator channels.
 3. DO NOT fabricate or simulate any fake names, addresses, or phone numbers.
-4. DO NOT change/shift addresses of existing restaurants to make them fit near the target coordinates. If there are no such restaurants within 2.0 km, return an empty array [].
+4. DO NOT change/shift addresses of existing restaurants to make them fit near the target coordinates. If there are no such restaurants within ${maxRadius} km, return an empty array [].
 5. Remove any speculative or inaccurate ratings or reviews, keep information highly precise. If telephone is inaccurate or not 100% known, represent as empty string "".
-6. Calculate the coordinates accurately so they reside exactly at that actual restaurant's real geolocation, and check that the distance to [${lat}, ${lng}] is indeed <= 2.0 km.
+6. Calculate the coordinates accurately so they reside exactly at that actual restaurant's real geolocation, and check that the distance to [${lat}, ${lng}] is indeed <= ${maxRadius} km.
 
 The result must be a JSON array. Each object in the array must strictly match this schema:
 - id: A unique string starting with "gemini_" (e.g. "gemini_mapo_sundae_19")
@@ -771,7 +896,7 @@ The result must be a JSON array. Each object in the array must strictly match th
         finalPrompt += `\n\n- User Preference Style constraint: Pay special attention to search suggestions that match the user's preferred culinary style, flavor profile, or atmosphere stated as: "${favoriteStyle}". For example, if they like '매운 대접' or '한식 노포', search for matches fitting that criteria.`;
       }
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`;
       const response = await fetch(url, {
         method: "POST",
         headers: {
@@ -830,7 +955,7 @@ The result must be a JSON array. Each object in the array must strictly match th
       if (Array.isArray(parsed)) {
         return parsed.filter(item => {
           const dist = getDistance(lat, lng, item.latitude, item.longitude);
-          return dist <= 2.0;
+          return dist <= maxRadius;
         });
       }
       return [];
@@ -841,6 +966,8 @@ The result must be a JSON array. Each object in the array must strictly match th
       isInitialState = false;
       document.getElementById("loading-overlay").style.display = "flex";
       document.getElementById("error-banner").style.display = "none";
+      const geminiErrorBanner = document.getElementById("gemini-error-banner");
+      if (geminiErrorBanner) geminiErrorBanner.style.display = "none";
       
       // Auto attach local storage Gemini API Key if present and not in payload
       const savedKey = localStorage.getItem("gemini_api_key");
@@ -905,9 +1032,29 @@ The result must be a JSON array. Each object in the array must strictly match th
           locationName = "서울 마포구 망원동";
         }
 
-        // 2. Filter local restaurants within 2.0 km from preloaded database
+        // Calculate fallback dynamic radius matching search location scope
+        const fallbackLocLower = (locationName || "").toLowerCase();
+        const fallbackIsBroad = 
+          fallbackLocLower.includes("부산") || 
+          fallbackLocLower.includes("제주") || 
+          fallbackLocLower.includes("대구") || 
+          fallbackLocLower.includes("대전") || 
+          fallbackLocLower.includes("광주") || 
+          fallbackLocLower.includes("인천") || 
+          fallbackLocLower.includes("울산") || 
+          fallbackLocLower.includes("강원") || 
+          fallbackLocLower.includes("경기") || 
+          fallbackLocLower.includes("충청") || 
+          fallbackLocLower.includes("전라") || 
+          fallbackLocLower.includes("경상") ||
+          fallbackLocLower.includes("서울") ||
+          fallbackLocLower.length <= 5;
+
+        const fallbackMaxRadius = fallbackIsBroad ? 15.0 : 3.5;
+
+        // 2. Filter local restaurants within fallbackMaxRadius from preloaded database
         const db = window.TV_RESTAURANTS_DB || [];
-        const localList = db.filter(r => getDistance(targetLat, targetLng, r.latitude, r.longitude) <= 2.0);
+        const localList = db.filter(r => getDistance(targetLat, targetLng, r.latitude, r.longitude) <= fallbackMaxRadius);
         let list = [...localList];
 
         // 3. Optional client-side Gemini AI search if key is provided
@@ -944,7 +1091,8 @@ The result must be a JSON array. Each object in the array must strictly match th
           centerLng: targetLng,
           restaurants: list,
           isGeminiActive: isGeminiActive,
-          geminiError: geminiError
+          geminiError: geminiError,
+          maxRadius: fallbackMaxRadius
         };
       }
 
@@ -957,10 +1105,11 @@ The result must be a JSON array. Each object in the array must strictly match th
         const accumList = getAccumulatedRestaurants();
         const deletedIds = getDeletedRestaurantIds();
         
-        // 2. Filter accumulated discoveries within 2.0 km of the current search center
+        // 2. Filter accumulated discoveries within dynamic maxRadius of the current search center
+        const queryRadius = data.maxRadius || 3.5;
         const accumWithinRadius = accumList.filter(r => {
           if (deletedIds.has(r.id)) return false;
-          return getDistance(centerLat, centerLng, r.latitude, r.longitude) <= 2.0;
+          return getDistance(centerLat, centerLng, r.latitude, r.longitude) <= queryRadius;
         });
 
         // 3. Keep track of edited/corrected versions from storage to override preloaded ones
@@ -1018,15 +1167,24 @@ The result must be a JSON array. Each object in the array must strictly match th
 
         allFetchedRestaurants = mergedList;
         
-        // Show AI status badge dynamically from server configuration
-        const activeBadge = document.getElementById("gemini-active-badge");
-        if (activeBadge) {
-          activeBadge.style.display = data.isGeminiActive ? "flex" : "none";
-        }
-        
-        // Gemini Warning is suppressed based on user preference
-        if (data.geminiError) {
-          console.log("Gemini API call warning/limit handled silently:", data.geminiError);
+        // Gemini Error banner handling
+        const bannerEl = document.getElementById("gemini-error-banner");
+        const errorTextEl = document.getElementById("gemini-error-text");
+        if (bannerEl && errorTextEl) {
+          if (data.geminiError) {
+            bannerEl.style.display = "block";
+            if (data.geminiError === "QUOTA_LIMIT") {
+              errorTextEl.innerHTML = `<strong>⚠️ 일일 호출 한도 초과:</strong> 무료 제공 일일 할당량(20회)이 초과되었습니다.<br>잠시 후 다시 조회하시거나, <strong>개인 Gemini API Key</strong>를 등록하시면 한도 제한 없이 실시간 탐색이 계속됩니다.`;
+            } else if (data.geminiError === "HIGH_DEMAND") {
+              errorTextEl.innerHTML = `<strong>⚠️ 모델 호출 지연 (503):</strong> 현재 구글 무료 서버 모델에 일시적인 트래픽이 몰리고 있습니다.<br>잠시 후 상단의 <strong>새로고침</strong> 버튼을 눌러보세요.`;
+            } else if (data.geminiError === "INVALID_API_KEY") {
+              errorTextEl.innerHTML = `<strong>⚠️ 올바르지 않은 API Key:</strong> 설정된 Gemini API Key가 유효하지 않거나 일시적 에러가 발생했습니다.<br>구글 AI 스튜디오 등에서 재발급 받은 올바른 Key 값을 등록해 주세요.`;
+            } else {
+              errorTextEl.innerHTML = `<strong>⚠️ Gemini 연동 오류:</strong> ${data.geminiError}`;
+            }
+          } else {
+            bannerEl.style.display = "none";
+          }
         }
         
         // Update Title
@@ -1525,49 +1683,18 @@ The result must be a JSON array. Each object in the array must strictly match th
       container.innerHTML = `
         <div class="p-6 bg-gradient-to-br from-rose-50/[0.2] to-violet-50/[0.2] border border-slate-150/80 rounded-2xl shadow-xs space-y-5 animate-fadeIn">
           
-          <!-- Healing/Apologetic Cute Bowing Mochi Character -->
-          <div class="text-center space-y-2.5">
-            <div class="relative py-2 max-w-[140px] mx-auto select-none">
-              <!-- Custom Animated SVG character bowing with cute guilt blush -->
-              <svg class="w-24 h-24 mx-auto animate-cuteBow" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <!-- Steaming details representing hot food & hot topics -->
-                <path d="M42 20 C42 16, 45 14, 45 10" stroke="#f43f5e" stroke-width="2" stroke-linecap="round" stroke-dasharray="2,2" class="opacity-70 animate-pulse"/>
-                <path d="M50 18 C50 14, 53 12, 53 8" stroke="#f43f5e" stroke-width="2" stroke-linecap="round" stroke-dasharray="2,2" class="opacity-70 animate-pulse" />
-                <path d="M58 20 C58 16, 61 14, 61 10" stroke="#f43f5e" stroke-width="2" stroke-linecap="round" stroke-dasharray="2,2" class="opacity-70 animate-pulse" />
-
-                <!-- Dumpling/Mochi Body -->
-                <path d="M25 65 C25 45, 35 30, 50 30 C65 30, 75 45, 75 65 C75 75, 68 78, 50 78 C32 78, 25 75, 25 65 Z" fill="#ffffff" stroke="#e2e8f0" stroke-width="3" />
-                
-                <!-- Dumpling top fold -->
-                <path d="M44 30 C48 23, 52 23, 56 30" fill="#ffffff" stroke="#cbdaf1" stroke-width="2.5" />
-                
-                <!-- Cute blushing cheeks -->
-                <circle cx="34" cy="62" r="7" fill="#fecdd3" class="opacity-90" />
-                <circle cx="66" cy="62" r="7" fill="#fecdd3" class="opacity-90" />
-
-                <!-- Cute closed/apologetic eyes (u_u or ^_^) -->
-                <path d="M30 54 Q35 58 40 54" stroke="#475569" stroke-width="3" stroke-linecap="round" fill="none"/>
-                <path d="M60 54 Q65 58 70 54" stroke="#475569" stroke-width="3" stroke-linecap="round" fill="none"/>
-
-                <!-- Anime sweat drop representing apologetic nature -->
-                <path d="M73 42 C73 42, 78 37, 79 41 C80 45, 76 47, 73 42" fill="#38bdf8" />
-                
-                <!-- Apologetic small open shy mouth -->
-                <path d="M48 61 Q50 63 52 61" stroke="#475569" stroke-width="2.5" stroke-linecap="round" fill="none"/>
-                
-                <!-- Tiny arms holding together politely down in front of it -->
-                <path d="M37 72 C42 74, 48 74, 50 72" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round" fill="none"/>
-                <path d="M63 72 C58 74, 52 74, 50 72" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round" fill="none"/>
-              </svg>
-              <!-- Shadow scaling dynamically with the bow -->
-              <div class="w-16 h-1.5 bg-slate-200/50 rounded-full mx-auto -mt-1.5 animate-cuteShadow"></div>
+          <!-- Heading Section with a cute icon -->
+          <div class="text-center space-y-2">
+            <div class="mx-auto w-12 h-12 rounded-2xl bg-gradient-to-tr from-rose-500 to-amber-500 flex items-center justify-center text-white shadow-md shadow-rose-200/40 relative">
+              <i data-lucide="sparkles" class="w-6 h-6 animate-pulse"></i>
+              <span class="absolute -bottom-1 -right-1 flex h-3 w-3">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+              </span>
             </div>
-            
-            <div class="space-y-1">
-              <h2 class="font-extrabold text-base text-slate-800 tracking-tight">On Air Eats 탐색기</h2>
-              <div class="inline-block px-2.5 py-0.5 rounded-full bg-rose-50 border border-rose-100 text-[10px] text-rose-600 font-extrabold">
-                실시간 AI 성장형 맛집 수첩
-              </div>
+            <h2 class="font-extrabold text-base text-slate-800 tracking-tight">On Air Eats 탐색기</h2>
+            <div class="inline-block px-2.5 py-0.5 rounded-full bg-rose-50 border border-rose-100 text-[10px] text-rose-600 font-extrabold">
+              실시간 AI 성장형 맛집 수첩
             </div>
           </div>
           
@@ -1591,6 +1718,15 @@ The result must be a JSON array. Each object in the array must strictly match th
             >
               <i data-lucide="compass" class="w-4.5 h-4.5"></i>
               <span>내 GPS 주변 맛집 찾기</span>
+            </button>
+            
+            <button
+              onclick="window.startDefaultLocationSearch(event)"
+              type="button"
+              class="w-full py-2.5 px-4 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-3xs"
+            >
+              <i data-lucide="map-pin" class="w-4 h-4 text-rose-500"></i>
+              <span>서울 마포구 망원동 주변 (기본 위치)</span>
             </button>
           </div>
 
@@ -1619,6 +1755,11 @@ The result must be a JSON array. Each object in the array must strictly match th
       if (gpsBtn) {
         gpsBtn.click();
       }
+    };
+
+    window.startDefaultLocationSearch = function(e) {
+      if (e) e.stopPropagation();
+      fetchServerRestaurants({ query: "서울 마포구 망원동" });
     };
 
     // --- Dynamic Mutation Features: Delete & AI Info Correction ---
@@ -1693,7 +1834,7 @@ The result must be a JSON array. Each object in the array must strictly match th
 
         // Client fallback with custom user key
         if (!updatedItem && apiKey) {
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${apiKey}`;
           const prompt = `You are an expert GIS data editor.
 Convert the following Korean TV-featured restaurant object to incorporate specific corrections:
 Original details:
@@ -1915,51 +2056,189 @@ Return ONLY valid JSON format matching this schema. Avoid any extra text context
       );
     });
 
-    // --- Force Recenter controls clicked ---
-    document.getElementById("map-recenter-btn").addEventListener("click", () => {
-      if (appMapInstance) {
-        appMapInstance.setView([centerLat, centerLng], 14);
+    // --- Gemini Configuration Modal Logics ---
+    const configBtn = document.getElementById("gemini-api-config-btn");
+    const placeholderConfigBtn = document.getElementById("open-config-btn-placeholder");
+    const configModal = document.getElementById("gemini-config-modal");
+    const closeConfigBtn = document.getElementById("close-gemini-modal-btn");
+    const resetConfigBtn = document.getElementById("reset-gemini-modal-btn");
+    const saveConfigBtn = document.getElementById("save-gemini-modal-btn");
+    const apiKeyInput = document.getElementById("gemini-api-key-input");
+    const visibilityBtn = document.getElementById("toggle-key-visibility-btn");
+    const visibilityIcon = document.getElementById("visibility-icon");
+
+    function updateGeminiUIState() {
+      const savedKey = localStorage.getItem("gemini_api_key");
+      const indicator = document.getElementById("gemini-status-indicator");
+      const modalStatus = document.getElementById("gemini-status");
+      const activeBadge = document.getElementById("gemini-active-badge");
+
+      if (savedKey) {
+        if (indicator) {
+          indicator.className = "absolute -top-1 -right-1 w-3 h-3 bg-violet-500 rounded-full border-2 border-white animate-pulse";
+        }
+        if (modalStatus) {
+          modalStatus.textContent = "활성화됨";
+          modalStatus.className = "text-[9px] text-emerald-600 font-extrabold font-mono";
+        }
+        if (activeBadge) {
+          activeBadge.style.display = "flex";
+        }
+      } else {
+        if (indicator) {
+          indicator.className = "absolute -top-1 -right-1 w-3 h-3 bg-slate-300 rounded-full border-2 border-white";
+        }
+        if (modalStatus) {
+          modalStatus.textContent = "연결되지 않음";
+          modalStatus.className = "text-[9px] text-slate-400 font-semibold font-mono";
+        }
+        if (activeBadge) {
+          activeBadge.style.display = "none";
+        }
+      }
+    }
+
+    function openConfigModal() {
+      const currentKey = localStorage.getItem("gemini_api_key") || "";
+      apiKeyInput.value = currentKey;
+      configModal.style.display = "flex";
+      updateGeminiUIState();
+    }
+
+    configBtn.addEventListener("click", openConfigModal);
+    if (placeholderConfigBtn) {
+      placeholderConfigBtn.addEventListener("click", openConfigModal);
+    }
+    
+    closeConfigBtn.addEventListener("click", () => {
+      configModal.style.display = "none";
+    });
+
+    resetConfigBtn.addEventListener("click", () => {
+      if (confirm("연동된 Gemini AI 맛집 추천 키를 해제하고 지우시겠습니까?")) {
+        localStorage.removeItem("gemini_api_key");
+        configModal.style.display = "none";
+        updateGeminiUIState();
+        
+        // Re-fetch current location with clear parameters
+        const currentQuery = document.getElementById("current-location-text").textContent;
+        fetchServerRestaurants({ query: currentQuery, latitude: centerLat, longitude: centerLng });
       }
     });
+
+    saveConfigBtn.addEventListener("click", () => {
+      const newKey = apiKeyInput.value.trim();
+      if (!newKey) {
+        alert("Gemini AI API Key를 정확히 입력해 주십시오.");
+        return;
+      }
+      localStorage.setItem("gemini_api_key", newKey);
+      configModal.style.display = "none";
+      updateGeminiUIState();
+
+      // Trigger hot reload of current view restaurants
+      const currentQuery = document.getElementById("current-location-text").textContent;
+      fetchServerRestaurants({ query: currentQuery, latitude: centerLat, longitude: centerLng });
+    });
+
+    // Toggle Input Field Visibility (Password/Text)
+    visibilityBtn.addEventListener("click", () => {
+      if (apiKeyInput.type === "password") {
+        apiKeyInput.type = "text";
+        visibilityIcon.setAttribute("data-lucide", "eye-off");
+      } else {
+        apiKeyInput.type = "password";
+        visibilityIcon.setAttribute("data-lucide", "eye");
+      }
+      lucide.createIcons();
+    });
+
+    // --- Force Recenter controls clicked ---
+    const mapRecenterBtn = document.getElementById("map-recenter-btn");
+    if (mapRecenterBtn) {
+      mapRecenterBtn.addEventListener("click", () => {
+        if (appMapInstance) {
+          appMapInstance.setView([centerLat, centerLng], 14);
+        }
+      });
+    }
+
+    // --- Gemini banner action triggers ---
+    const geminiBannerConfigBtn = document.getElementById("gemini-banner-config-btn");
+    if (geminiBannerConfigBtn) {
+      geminiBannerConfigBtn.addEventListener("click", () => {
+        openConfigModal();
+      });
+    }
+
+    const geminiBannerDismissBtn = document.getElementById("gemini-banner-dismiss-btn");
+    if (geminiBannerDismissBtn) {
+      geminiBannerDismissBtn.addEventListener("click", () => {
+        const errorBannerEl = document.getElementById("gemini-error-banner");
+        if (errorBannerEl) errorBannerEl.style.display = "none";
+      });
+    }
+
+    // --- AI Force refresh button ---
+    const aiForceRefreshBtn = document.getElementById("ai-force-refresh-btn");
+    if (aiForceRefreshBtn) {
+      aiForceRefreshBtn.addEventListener("click", () => {
+        const currentLocEl = document.getElementById("current-location-text");
+        const currentQuery = currentLocEl ? currentLocEl.textContent : "";
+        fetchServerRestaurants({
+          query: currentQuery,
+          latitude: centerLat,
+          longitude: centerLng,
+          force: true
+        });
+      });
+    }
 
     // --- Filter Expand/Collapse Drawer Logics ---
     const filterExpander = document.getElementById("filter-expander");
     const toggleFiltersBtn = document.getElementById("toggle-filters-btn");
     
-    toggleFiltersBtn.addEventListener("click", () => {
-      if (filterExpander.style.display === "none") {
-        filterExpander.style.display = "block";
-        toggleFiltersBtn.className = "text-xs py-1.5 px-3 rounded-lg border flex items-center gap-1.5 font-bold transition-all cursor-pointer bg-rose-50 border-rose-200 text-rose-600 shadow-2xs";
-      } else {
-        filterExpander.style.display = "none";
-        toggleFiltersBtn.className = "text-xs py-1.5 px-3 rounded-lg border flex items-center gap-1.5 font-bold transition-all cursor-pointer bg-white border-slate-200 text-slate-700 hover:bg-slate-50";
-      }
-    });
+    if (toggleFiltersBtn && filterExpander) {
+      toggleFiltersBtn.addEventListener("click", () => {
+        if (filterExpander.style.display === "none") {
+          filterExpander.style.display = "block";
+          toggleFiltersBtn.className = "text-xs py-1.5 px-3 rounded-lg border flex items-center gap-1.5 font-bold transition-all cursor-pointer bg-rose-50 border-rose-200 text-rose-600 shadow-2xs";
+        } else {
+          filterExpander.style.display = "none";
+          toggleFiltersBtn.className = "text-xs py-1.5 px-3 rounded-lg border flex items-center gap-1.5 font-bold transition-all cursor-pointer bg-white border-slate-200 text-slate-700 hover:bg-slate-50";
+        }
+      });
+    }
 
     // --- Reset filters trigger button inside empty listings ---
-    document.getElementById("clear-all-filters-btn").addEventListener("click", () => {
-      activeFilters.tvShow = "All";
-      activeFilters.category = "All";
-      rebuildFilterCheckboxes();
-      renderRestaurantList();
-    });
+    const clearAllFiltersBtn = document.getElementById("clear-all-filters-btn");
+    if (clearAllFiltersBtn) {
+      clearAllFiltersBtn.addEventListener("click", () => {
+        activeFilters.tvShow = "All";
+        activeFilters.category = "All";
+        rebuildFilterCheckboxes();
+        renderRestaurantList();
+      });
+    }
 
     // --- Sorting triggers setup ---
     const sortButtons = document.querySelectorAll("#sort-by-container button");
-    sortButtons.forEach(btn => {
-      btn.addEventListener("click", () => {
-        const sortingType = btn.getAttribute("data-sort");
-        activeFilters.sortBy = sortingType;
-        
-        // Toggle selected styles
-        sortButtons.forEach(b => {
-          b.className = "text-xs font-bold py-1.5 rounded-lg border transition-all text-center bg-white text-slate-600 border-slate-200 hover:bg-slate-50";
+    if (sortButtons && sortButtons.length > 0) {
+      sortButtons.forEach(btn => {
+        btn.addEventListener("click", () => {
+          const sortingType = btn.getAttribute("data-sort");
+          activeFilters.sortBy = sortingType;
+          
+          // Toggle selected styles
+          sortButtons.forEach(b => {
+            b.className = "text-xs font-bold py-1.5 rounded-lg border transition-all text-center bg-white text-slate-600 border-slate-200 hover:bg-slate-50";
+          });
+          btn.className = "text-xs font-bold py-1.5 rounded-lg border transition-all text-center bg-slate-800 text-white border-slate-800";
+          
+          renderRestaurantList();
         });
-        btn.className = "text-xs font-bold py-1.5 rounded-lg border transition-all text-center bg-slate-800 text-white border-slate-800";
-        
-        renderRestaurantList();
       });
-    });
+    }
 
     // --- Responsive Mobile Panel Swappers ---
     const mobileListBtn = document.getElementById("mobile-view-list-btn");
@@ -1967,31 +2246,35 @@ Return ONLY valid JSON format matching this schema. Avoid any extra text context
     const resultsPanel = document.getElementById("results-panel");
     const mapPanel = document.getElementById("map-container");
 
-    mobileListBtn.addEventListener("click", () => {
-      isMobileMapView = false;
-      mobileListBtn.className = "flex-1 py-2 text-xs font-extrabold rounded-lg text-rose-600 bg-rose-50 border border-rose-100 flex items-center justify-center gap-1.5";
-      mobileMapBtn.className = "flex-1 py-2 text-xs font-bold rounded-lg text-slate-500 bg-slate-50 hover:bg-slate-100 flex items-center justify-center gap-1.5";
-      
-      resultsPanel.className = "w-full md:w-[430px] bg-white border-r border-slate-100 flex flex-col h-full overflow-hidden shrink-0 z-20 shadow-xs relative";
-      mapPanel.className = "hidden md:flex flex-1 h-full relative bg-slate-50 overflow-hidden flex-col";
-    });
+    if (mobileListBtn) {
+      mobileListBtn.addEventListener("click", () => {
+        isMobileMapView = false;
+        mobileListBtn.className = "flex-1 py-2 text-xs font-extrabold rounded-lg text-rose-600 bg-rose-50 border border-rose-100 flex items-center justify-center gap-1.5";
+        if (mobileMapBtn) mobileMapBtn.className = "flex-1 py-2 text-xs font-bold rounded-lg text-slate-500 bg-slate-50 hover:bg-slate-100 flex items-center justify-center gap-1.5";
+        
+        if (resultsPanel) resultsPanel.className = "w-full md:w-[430px] bg-white border-r border-slate-100 flex flex-col h-full overflow-hidden shrink-0 z-20 shadow-xs relative";
+        if (mapPanel) mapPanel.className = "hidden md:flex flex-1 h-full relative bg-slate-50 overflow-hidden flex-col";
+      });
+    }
 
-    mobileMapBtn.addEventListener("click", () => {
-      isMobileMapView = true;
-      mobileMapBtn.className = "flex-1 py-2 text-xs font-extrabold rounded-lg text-rose-600 bg-rose-50 border border-rose-100 flex items-center justify-center gap-1.5";
-      mobileListBtn.className = "flex-1 py-2 text-xs font-bold rounded-lg text-slate-500 bg-slate-50 hover:bg-slate-100 flex items-center justify-center gap-1.5";
-      
-      resultsPanel.className = "hidden md:flex w-full md:w-[430px] bg-white border-r border-slate-100 flex-col h-full overflow-hidden shrink-0 z-20 shadow-xs relative";
-      mapPanel.className = "flex flex-1 h-full relative bg-slate-50 overflow-hidden flex-col";
-      
-      // Force Leaflet Map Layout Refresh
-      if (appMapInstance) {
-        setTimeout(() => {
-          appMapInstance.invalidateSize();
-          appMapInstance.setView([centerLat, centerLng], 14);
-        }, 150);
-      }
-    });
+    if (mobileMapBtn) {
+      mobileMapBtn.addEventListener("click", () => {
+        isMobileMapView = true;
+        mobileMapBtn.className = "flex-1 py-2 text-xs font-extrabold rounded-lg text-rose-600 bg-rose-50 border border-rose-100 flex items-center justify-center gap-1.5";
+        if (mobileListBtn) mobileListBtn.className = "flex-1 py-2 text-xs font-bold rounded-lg text-slate-500 bg-slate-50 hover:bg-slate-100 flex items-center justify-center gap-1.5";
+        
+        if (resultsPanel) resultsPanel.className = "hidden md:flex w-full md:w-[430px] bg-white border-r border-slate-100 flex-col h-full overflow-hidden shrink-0 z-20 shadow-xs relative";
+        if (mapPanel) mapPanel.className = "flex flex-1 h-full relative bg-slate-50 overflow-hidden flex-col";
+        
+        // Force Leaflet Map Layout Refresh
+        if (appMapInstance) {
+          setTimeout(() => {
+            appMapInstance.invalidateSize();
+            appMapInstance.setView([centerLat, centerLng], 14);
+          }, 150);
+        }
+      });
+    }
 
     // --- Initial Bootloader logic ---
     window.addEventListener("DOMContentLoaded", async () => {
@@ -2007,6 +2290,7 @@ Return ONLY valid JSON format matching this schema. Avoid any extra text context
 
       lucide.createIcons();
       initLeafletMap();
+      updateGeminiUIState();
 
       // 3. Render initial greeting/disclaimer state screen. No auto-search to respect user request!
       window.renderInitialIntroState();

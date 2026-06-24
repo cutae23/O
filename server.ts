@@ -36,24 +36,65 @@ async function searchRestaurantsWithGemini(
   lng: number,
   locationName: string,
   userApiKey?: string,
-  favoriteStyle?: string
+  favoriteStyle?: string,
+  force?: boolean
 ): Promise<any[]> {
   const apiKey = userApiKey || process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    console.log("No Gemini API key available for dynamic search.");
+  let cleanApiKey = apiKey ? apiKey.trim() : "";
+  // Strip surrounding quotes if users copy-pasted them
+  if (cleanApiKey.startsWith('"') && cleanApiKey.endsWith('"')) {
+    cleanApiKey = cleanApiKey.slice(1, -1);
+  }
+  if (cleanApiKey.startsWith("'") && cleanApiKey.endsWith("'")) {
+    cleanApiKey = cleanApiKey.slice(1, -1);
+  }
+  cleanApiKey = cleanApiKey.replace(/\r?\n|\r/g, "").trim();
+
+  const isKeyValid = cleanApiKey !== "" && cleanApiKey !== "MY_GEMINI_API_KEY" && !cleanApiKey.includes("YOUR_");
+  if (!isKeyValid) {
+    console.log("No valid Gemini API key available for dynamic search.");
     return [];
+  }
+
+  // Determine dynamic max search radius based on the scope of location query
+  let maxRadius = 3.5; // generous 3.5km default to guard against slight LLM coordinate rounding errors
+  const locLower = (locationName || "").toLowerCase();
+  const isBroadSearch = 
+    locLower.includes("부산") || 
+    locLower.includes("제주") || 
+    locLower.includes("대구") || 
+    locLower.includes("대전") || 
+    locLower.includes("광주") || 
+    locLower.includes("인천") || 
+    locLower.includes("울산") || 
+    locLower.includes("강원") || 
+    locLower.includes("경기") || 
+    locLower.includes("충청") || 
+    locLower.includes("전라") || 
+    locLower.includes("경상") ||
+    locLower.includes("서울") ||
+    locLower.length <= 5;
+
+  if (isBroadSearch) {
+    maxRadius = 15.0; // Expand to 15km for metropolitan cities / provinces / short queries
+    console.log(`[Dynamic Radius] Broad location detected. Setting max search radius to ${maxRadius}km`);
   }
 
   // Key by coordinate rounded to 3 decimal places (~110 meters) to cover pans/slight movements + style preference
   const cacheKey = `${lat.toFixed(3)},${lng.toFixed(3)}_${favoriteStyle || ""}`;
-  const cached = geminiSearchCache.get(cacheKey);
-  if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
-    console.log(`[Cache Hit] Returning cached Gemini results for coord ${cacheKey} (${locationName})`);
-    return cached.data;
+  
+  if (!force) {
+    const cached = geminiSearchCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+      console.log(`[Cache Hit] Returning cached Gemini results for coord ${cacheKey} (${locationName})`);
+      return cached.data;
+    }
+  } else {
+    console.log(`[Cache Bypass] Forced fresh Gemini search for coord ${cacheKey} (${locationName})`);
   }
 
   const ai = new GoogleGenAI({
-    apiKey: apiKey,
+    apiKey: cleanApiKey,
     httpOptions: {
       headers: {
         'User-Agent': 'aistudio-build',
@@ -71,15 +112,15 @@ async function searchRestaurantsWithGemini(
 Find real, officially featured restaurants in Korea that correspond to the following search profile:
 - Search Center point: ${locationName}
 - Coordinates: Latitude ${lat}, Longitude ${lng}
-- Distance constraint: Strictly within a 2.0 km radius of this center coordinate.${styleAddition}
+- Distance constraint: Strictly within a ${maxRadius} km radius of this center coordinate.${styleAddition}
 
 Strict Rules of Integrity:
 1. Search thoroughly across ALL SEASONS and year ranges of the TV shows listed above (e.g. '전현무계획 시즌1', '전현무계획 시즌2', '줄 서는 식당 2', '식신로드 시즌1/시즌2/시즌3/시즌4', '테이스티 로드 전 시즌', '어쩌다 사장 1/2/3', '밥블레스유 2020', '맛있는 녀석들' different eras, etc.).
 2. Return ONLY real, verifiable restaurants that actually exist and have been featured on Korean culinary TV programs or Creator channels.
 3. DO NOT fabricate or simulate any fake names, addresses, or phone numbers.
-4. DO NOT change/shift addresses of existing restaurants to make them fit near the target coordinates. If there are no such restaurants within 2.0 km, return an empty array [].
+4. DO NOT change/shift addresses of existing restaurants to make them fit near the target coordinates. If there are no such restaurants within ${maxRadius} km, return an empty array [].
 5. Remove any speculative or inaccurate ratings or reviews, keep information highly precise. If telephone is inaccurate or not 100% known, represent as empty string "".
-6. Calculate the coordinates accurately so they reside exactly at that actual restaurant's real geolocation, and check that the distance to [${lat}, ${lng}] is indeed <= 2.0 km.
+6. Calculate the coordinates accurately so they reside exactly at that actual restaurant's real geolocation, and check that the distance to [${lat}, ${lng}] is indeed <= ${maxRadius} km.
 
 The result must be a JSON array. Each object in the array must strictly match this schema:
 - id: A unique string starting with "gemini_" (e.g. "gemini_mapo_sundae_19")
@@ -98,7 +139,7 @@ The result must be a JSON array. Each object in the array must strictly match th
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.1-flash-lite",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -143,31 +184,40 @@ The result must be a JSON array. Each object in the array must strictly match th
     if (text) {
       const parsed = JSON.parse(text.trim());
       if (Array.isArray(parsed)) {
-        // Double check distance to satisfy "within 2km"
+        // Double check distance to satisfy dynamic maxRadius limit
         const filtered = parsed.filter(item => {
+          if (!item.latitude || !item.longitude) return false;
           const dist = getDistance(lat, lng, item.latitude, item.longitude);
-          return dist <= 2.0;
+          return dist <= maxRadius;
         });
 
-        // Store success result in cache
-        const cacheKey = `${lat.toFixed(3)},${lng.toFixed(3)}`;
-        geminiSearchCache.set(cacheKey, {
-          timestamp: Date.now(),
-          data: filtered
-        });
+        // Store successful results in cache only if we actually found something
+        if (filtered.length > 0) {
+          geminiSearchCache.set(cacheKey, {
+            timestamp: Date.now(),
+            data: filtered
+          });
+        }
 
         return filtered;
       }
     }
     return [];
   } catch (error: any) {
+    console.error("Critical Gemini API Error Details:", error);
     const errMsg = error?.message || String(error);
     if (errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("RESOURCE_EXHAUSTED")) {
       console.log("[Server Info]: Gemini API Quota Limit encountered.");
       throw new Error("QUOTA_LIMIT");
+    } else if (errMsg.includes("503") || errMsg.includes("demand") || errMsg.includes("UNAVAILABLE") || errMsg.includes("temporary")) {
+      console.log("[Server Info]: Gemini API High Demand (503) encountered.");
+      throw new Error("HIGH_DEMAND");
+    } else if (errMsg.includes("API key not valid") || errMsg.includes("INVALID_ARGUMENT") || errMsg.includes("key is invalid") || errMsg.includes("API_KEY_INVALID")) {
+      console.log("[Server Info]: Gemini API key is invalid.");
+      throw new Error("INVALID_API_KEY");
     } else {
-      console.log("[Server Info]: Gemini API dynamic search ended.");
-      throw new Error(errMsg.slice(0, 100));
+      console.log(`[Server Info] Gemini dynamic search failed: ${errMsg}`);
+      throw new Error(errMsg);
     }
   }
 }
@@ -180,13 +230,22 @@ async function startServer() {
 
   // API Route for health-check
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", mode: process.env.NODE_ENV || "development", count: TV_RESTAURANTS_DB.length });
+    const apiKey = process.env.GEMINI_API_KEY;
+    const hasKey = !!apiKey && apiKey.trim() !== "" && apiKey !== "MY_GEMINI_API_KEY" && !apiKey.includes("YOUR_");
+    res.json({ 
+      status: "ok", 
+      mode: process.env.NODE_ENV || "development", 
+      count: TV_RESTAURANTS_DB.length,
+      hasServerApiKey: hasKey,
+      keyPrefix: hasKey ? apiKey!.slice(0, 6) + "..." : null,
+      keyLength: hasKey ? apiKey!.length : 0
+    });
   });
 
-  // API Route to fetch TV restaurants
+    // API Route to fetch TV restaurants
   app.post("/api/restaurants", async (req, res) => {
     console.log("Received local restaurant search request:", req.body);
-    const { query, latitude, longitude, geminiApiKey, favoriteStyle } = req.body;
+    const { query, latitude, longitude, geminiApiKey, favoriteStyle, force } = req.body;
 
     try {
       let targetLat = latitude ? parseFloat(latitude) : null;
@@ -225,20 +284,44 @@ async function startServer() {
         locationName = "서울 마포구 망원동";
       }
 
-      // 1. Filter real restaurants within 2km from local database
+      // Calculate dynamic query radius matching search location scope
+      let queryRadius = 3.5;
+      const locLower = (locationName || "").toLowerCase();
+      const isBroadSearch = 
+        locLower.includes("부산") || 
+        locLower.includes("제주") || 
+        locLower.includes("대구") || 
+        locLower.includes("대전") || 
+        locLower.includes("광주") || 
+        locLower.includes("인천") || 
+        locLower.includes("울산") || 
+        locLower.includes("강원") || 
+        locLower.includes("경기") || 
+        locLower.includes("충청") || 
+        locLower.includes("전라") || 
+        locLower.includes("경상") ||
+        locLower.includes("서울") ||
+        locLower.length <= 5;
+
+      if (isBroadSearch) {
+        queryRadius = 15.0;
+      }
+
+      // 1. Filter real restaurants within 2km from local database (always keep standard nearby static restaurants)
       const localList = TV_RESTAURANTS_DB.filter(r => getDistance(targetLat!, targetLng!, r.latitude, r.longitude) <= 2.0);
       let list = [...localList];
 
       // 2. dynamically search using Gemini API if active
       const finalApiKey = geminiApiKey || process.env.GEMINI_API_KEY;
+      const isKeyValid = finalApiKey && finalApiKey.trim() !== "" && finalApiKey !== "MY_GEMINI_API_KEY" && !finalApiKey.includes("YOUR_");
       let isGeminiActive = false;
       let geminiError = null;
 
-      if (finalApiKey) {
+      if (isKeyValid) {
         isGeminiActive = true;
-        console.log("Triggering dynamic Gemini API search block with style:", favoriteStyle);
+        console.log("Triggering dynamic Gemini API search block with style:", favoriteStyle, "force:", !!force);
         try {
-          const geminiFound = await searchRestaurantsWithGemini(targetLat, targetLng, locationName, finalApiKey, favoriteStyle);
+          const geminiFound = await searchRestaurantsWithGemini(targetLat, targetLng, locationName, finalApiKey, favoriteStyle, !!force);
           
           if (geminiFound && geminiFound.length > 0) {
             const localNames = new Set(localList.map(r => r.name.replace(/\s+/g, "")));
@@ -258,9 +341,16 @@ async function startServer() {
           }
         } catch (gem_err: any) {
           const errMsg = gem_err?.message || String(gem_err);
-          const isQuota = errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("QUOTA_LIMIT");
-          console.log(`[Server Info] Gemini dynamic search was skipped safely due to: ${isQuota ? "Quota limit" : "General limit"}`);
-          geminiError = isQuota ? "QUOTA_LIMIT" : errMsg.slice(0, 100);
+          console.log(`[Server Info] Gemini dynamic search failed or skipped: ${errMsg}`);
+          if (errMsg.includes("QUOTA_LIMIT")) {
+            geminiError = "QUOTA_LIMIT";
+          } else if (errMsg.includes("HIGH_DEMAND")) {
+            geminiError = "HIGH_DEMAND";
+          } else if (errMsg.includes("INVALID_API_KEY")) {
+            geminiError = "INVALID_API_KEY";
+          } else {
+            geminiError = errMsg.slice(0, 150);
+          }
         }
       }
 
@@ -273,7 +363,8 @@ async function startServer() {
         centerLng: targetLng,
         restaurants: list,
         isGeminiActive: isGeminiActive,
-        geminiError: geminiError
+        geminiError: geminiError,
+        maxRadius: queryRadius
       });
 
     } catch (error: any) {
@@ -287,7 +378,8 @@ async function startServer() {
         centerLat: defaultLat,
         centerLng: defaultLng,
         restaurants: matchedFallback,
-        isGeminiActive: false
+        isGeminiActive: false,
+        maxRadius: 2.0
       });
     }
   });
@@ -325,7 +417,7 @@ Ensure coordinates (latitude, longitude) are valid numbers. Keep all other uncha
 Return ONLY a valid JSON object matching the schema. No explanations, no markdown blocks.`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+        model: "gemini-3.1-flash-lite",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
