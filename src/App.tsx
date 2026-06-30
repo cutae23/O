@@ -875,11 +875,9 @@ export default function App() {
                           )}
                         </div>
 
-                        {/* Navigation link triggers using store name with location context for perfect matches */}
+                        {/* Navigation link triggers using store name only for perfect matches as requested by the user */}
                         {(() => {
-                          const addrParts = restaurant.address.split(" ");
-                          const cityRegion = addrParts.slice(0, 3).filter(p => !p.match(/\d/)).join(" ");
-                          const queryKeyword = `${cityRegion} ${restaurant.name}`;
+                          const queryKeyword = restaurant.name;
                           return (
                             <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-slate-100">
                               <a
